@@ -360,3 +360,37 @@ nosana account info --api https://api.nosana.io
 - API key configured in `~/.nosana/config`
 - **SOL in wallet for gas fees**
 - Credits available at https://deploy.nosana.com
+
+## API Implementation Examples
+
+Production API endpoints using the credit bypass pattern:
+
+- `POST https://ynvmaker.zo.space/api/submit-with-credits` - Submit jobs with CLI --api flag
+- `GET https://ynvmaker.zo.space/api/credit-status` - Check credit balance + gas requirements  
+- `POST https://ynvmaker.zo.space/api/credit-mana` - Credit "mana" (budget) operations
+
+See `api-examples.ts` for the actual implementation code.
+
+### Key Implementation Details
+
+**submit-with-credits:**
+- Creates temp job JSON file
+- Calls `nosana job post --api` (not SDK)
+- Returns job address + warnings about SOL requirement
+- Handles "insufficient funds" errors specifically
+
+**credit-status:**
+- Calls `nosana account info` for real data
+- Returns credit balance + SOL gas requirements
+- Includes architecture explanation
+- Can check specific job status
+
+**credit-mana:**
+- Credit "mana" = your GPU compute budget
+- Actions: `check`, `estimate`, `reserve`
+- Returns estimated jobs affordable
+- Separate from NOS token or SOL
+
+---
+
+*Last updated: Production APIs at ynvmaker.zo.space*

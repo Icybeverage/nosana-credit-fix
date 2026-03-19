@@ -2,6 +2,17 @@
 /**
  * Nosana Credit Fix - Submit jobs using CLI API flag
  * Bypasses SDK gas requirements by using direct API authentication
+ * 
+ * ⚠️  WARNING: You still need SOL gas even with USD credits!
+ * 
+ * USD credits pay for GPU compute time, but every Solana transaction
+ * requires SOL for gas fees. Minimum ~0.01 SOL recommended.
+ * 
+ * ⚠️  WARNING: Credit system and crypto system are wired differently
+ * 
+ * - Credit path: CLI --api flag works reliably
+ * - Crypto path: SDK wallet parameter works reliably
+ * - SDK may fail with credits even when CLI succeeds
  */
 
 import { execSync } from 'child_process';
@@ -59,6 +70,7 @@ export async function submitWithCredits(config: JobConfig): Promise<JobResult> {
   console.log(`📤 Submitting job via CLI API...`);
   console.log(`   Prompt: ${config.prompt}`);
   console.log(`   Duration: ${config.duration}s`);
+  console.log(`   ⚠️  Ensure you have SOL for gas + credits for compute`);
   
   // Use CLI with --api flag (handles credits natively)
   const result = execSync(
@@ -96,6 +108,10 @@ if (require.main === module) {
     })
     .catch(err => {
       console.error('❌ Failed:', err.message);
+      if (err.message.includes('insufficient funds')) {
+        console.error('\n💡 You need SOL for gas even with credits!');
+        console.error('   Get SOL from an exchange or faucet.');
+      }
       process.exit(1);
     });
 }

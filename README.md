@@ -21,7 +21,11 @@ Having USD credits does NOT eliminate the need for SOL gas. Every transaction on
 ✅ CORRECT: Credits pay for GPU time, SOL pays for transaction fees
 ```
 
-### What You Actually Need: SOL (not NOS) - Technical Deep Dive
+**What you need:**
+- Minimum ~0.01 SOL in your wallet for gas fees
+- USD credits at https://deploy.nosana.com for compute time
+
+### What You Actually Need: SOL (not NOS)
 
 **You need SOL for gas - NOT the NOS token.**
 
@@ -29,11 +33,11 @@ Having USD credits does NOT eliminate the need for SOL gas. Every transaction on
 |------|---------------|---------|--------------|---------------|
 | **Gas fees** | SOL | Pay for Solana transactions | Any exchange, faucet | ~0.001-0.01 SOL per job |
 | **Compute** | USD Credits | Pay for GPU time | https://deploy.nosana.com | $0.50-$5.00 per job |
-| **NOT NEEDED** | NOS token | Staking/governance | Exchanges (Jupiter, Raydium) | 0 for credit jobs |
+| **NOT NEEDED** | NOS token | Staking/governance | Exchanges | 0 for credit jobs |
 
 #### Why SOL Specifically?
 
-Nosana runs on the **Solana blockchain**, not its own chain. Every job submission creates one or more Solana transactions:
+Nosana runs on the **Solana blockchain**. Every job submission creates Solana transactions:
 
 ```
 Job Submission Flow:
@@ -48,256 +52,78 @@ Job Submission Flow:
 
 The gas fee goes to Solana validators, not to Nosana. You cannot pay Solana gas with anything except SOL.
 
-#### What Happens At The Blockchain Level
-
-When you run `nosana job post`:
-
-1. **Gas Payment (SOL)**: Immediate, mandatory, happens first
-   ```javascript
-   // Solana transaction structure
-   {
-     feePayer: YOUR_WALLET,      // Must have SOL
-     instructions: [POST_JOB],    // Calls Nosana program
-     recentBlockhash: "...",
-     signatures: [YOUR_SIGNATURE]
-   }
-   ```
-
-2. **Compute Payment (USD Credits)**: Happens AFTER gas is paid
-   - The Nosana program checks your API key's credit balance
-   - Deducts estimated GPU cost from your USD credits
-   - If credits insufficient, transaction FAILS (but you still paid gas!)
-
 #### Why NOS Token Isn't Used For Credit Jobs
-
-NOS token has two purposes:
-1. **Staking**: Lock NOS to become a node operator
-2. **Governance**: Vote on protocol changes
 
 For job submissions with credits:
 - The smart contract reads from a **credit database**, not token balances
 - Your API key maps to a fiat USD balance
 - NOS token is never touched or referenced
 
-```typescript
-// Pseudocode of Nosana smart contract logic
-function submitJob(apiKey, jobDefinition) {
-  // Gas is paid by wallet (SOL)
-  require(wallet.balance >= gasFee, "Insufficient SOL");
-  
-  // Compute is paid by credits (USD)
-  const creditBalance = creditDatabase.get(apiKey);
-  require(creditBalance >= jobCost, "Insufficient credits");
-  
-  // NOS token is NOT checked or used
-  // const nosBalance = tokenAccount.get(wallet); // Skipped!
-  
-  creditDatabase.deduct(apiKey, jobCost);
-  jobQueue.add(jobDefinition);
-}
+```
+Gas: Paid by wallet (SOL)
+Compute: Paid by API key (USD credits)
+NOS token: Not involved at all
 ```
 
-#### Edge Case: What If You Have NOS But No SOL?
+#### Edge Cases
 
+**What If You Have NOS But No SOL?**
 ```
-Scenario: You have 1000 NOS tokens, 0 SOL, $10 credits
-Result: ❌ Job fails immediately
-
-Error: "Insufficient funds for transaction"
-Why: Solana doesn't care about your NOS. It needs SOL.
+❌ Job fails with "Insufficient funds for transaction"
+Solana doesn't care about your NOS. It needs SOL.
 ```
 
-#### Edge Case: What If You Have SOL But No Credits?
-
+**What If You Have SOL But No Credits?**
 ```
-Scenario: You have 0.1 SOL, $0 credits
-Result: ❌ Gas paid (~0.005 SOL), then job fails
-
-Error: "Insufficient credits"
-Why: Gas succeeded, but credit check failed. You lost the SOL.
+❌ Gas paid (~0.005 SOL), then job fails with "Insufficient credits"
+You lost the SOL with nothing to show for it.
 ```
 
-### Adding Credits vs NOS Are Completely Different - Architecture Deep Dive
+### Adding Credits vs NOS Are Completely Different
 
 **⚠️ CRITICAL: There is NO way to add credits via the frontend currently**
 
-This isn't a missing feature—it's an architectural constraint. Here's why:
+This isn't a missing feature—it's an architectural constraint.
 
-#### Architecture Comparison
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     NOS TOKEN PURCHASE                          │
-│                         (Frontend Possible)                     │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  User Wallet ──▶ Jupiter/Raydium DEX ──▶ Token Account Update   │
-│                                                                 │
-│  • Pure smart contract interaction                              │
-│  • No KYC required                                              │
-│  • No payment processor                                         │
-│  • Instant on-chain settlement                                  │
-│  • Wallet signs = transaction executes                          │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────┐
-│                     USD CREDITS PURCHASE                        │
-│                      (Backend Only)                             │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  User ──▶ Credit Card / Crypto ──▶ Payment Processor            │
-│                                          │                      │
-│                                          ▼                      │
-│                                ┌─────────────────┐              │
-│                                │  Stripe / Circle │              │
-│                                │  (KYC Required)  │              │
-│                                └────────┬────────┘              │
-│                                         │                       │
-│                                         ▼                       │
-│                                ┌─────────────────┐              │
-│                                │  Nosana Backend  │              │
-│                                │  Credit Database │              │
-│                                └────────┬────────┘              │
-│                                         │                       │
-│                                         ▼                       │
-│                                API Key Credit Balance           │
-│                                                                 │
-│  • Requires payment processor (Stripe)                          │
-│  • KYC/AML compliance required                                    │
-│  • Fiat currency handling                                         │
-│  • Tax reporting obligations                                      │
-│  • Off-chain database update                                      │
-│  • Cannot be done via smart contract alone                        │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-#### Why There's No Smart Contract for Credit Purchases
-
-Credit purchases involve **fiat currency**, which cannot be handled by smart contracts:
+#### Why They're Different
 
 | Aspect | NOS Token | USD Credits |
 |--------|-----------|-------------|
-| **Currency** | Cryptocurrency (NOS) | Fiat (USD) |
-| **Settlement** | On-chain (instant) | Off-chain (Stripe) |
-| **KYC** | None required | Required by law |
-| **Smart Contract** | Yes (SPL token) | No (impossible) |
-| **Chargebacks** | Impossible | Possible (credit cards) |
-| **Tax Reporting** | User responsibility | Platform must report |
+| **Currency** | Cryptocurrency | Fiat (USD) |
+| **Settlement** | On-chain (instant) | Off-chain (payment processor) |
+| **How to Buy** | DEX swap (Jupiter, Raydium) | Credit card at deploy.nosana.com |
+| **Can Use SDK** | Yes | No |
+| **Can Use Frontend** | Yes | No |
 
-#### The Database Architecture
+#### Why There's No Frontend for Credits
 
-Nosana maintains TWO separate balance systems:
-
-```typescript
-// Database Schema (simplified)
-
-// 1. Token Balances (Solana blockchain)
-interface TokenAccount {
-  owner: PublicKey;        // Wallet address
-  mint: PublicKey;         // NOS token mint
-  amount: bigint;          // NOS token balance
-}
-
-// 2. Credit Balances (Nosana backend PostgreSQL)
-interface CreditAccount {
-  apiKey: string;          // Your API key
-  userId: string;          // Internal user ID
-  balanceUsd: number;      // USD credit balance
-  stripeCustomerId: string; // For payment processing
-  kycVerified: boolean;    // KYC status
-  createdAt: Date;
-}
-```
-
-These systems are completely isolated:
-- Token balances are on-chain, public, permissionless
-- Credit balances are off-chain, private, KYC-gated
-
-#### Why You Can't Add Credits Via Frontend SDK
-
-```typescript
-// What users want (IMPOSSIBLE):
-import { createNosanaClient } from '@nosana/kit';
-
-const client = createNosanaClient('mainnet', {
-  api: { apiKey: 'xxx' }
-});
-
-// ❌ This doesn't exist and can't exist
-await client.credits.addFunds({
-  amount: 50,  // $50
-  paymentMethod: 'credit_card'  // Requires Stripe integration
-});
-```
-
-**Why it's impossible:**
-
-1. **Stripe Integration**: Credit card processing requires Stripe.js, which cannot run in a decentralized SDK
-2. **PCI Compliance**: Handling credit cards requires PCI DSS compliance—something SDKs cannot achieve
-3. **KYC Requirements**: Fiat purchases require identity verification (upload ID, proof of address)
-4. **Backend Webhooks**: Stripe sends webhooks to Nosana's servers, not to your browser
-5. **Tax Reporting**: Nosana must report credit purchases to tax authorities—requires backend records
-
-#### The Only Way To Add Credits
-
-```
-Current Flow (Backend Only):
-
-1. User visits https://deploy.nosana.com
-2. Logs in with email/password (not wallet)
-3. Completes KYC (upload ID document)
-4. Enters credit card or crypto payment info
-5. Stripe processes payment
-6. Nosana backend updates credit balance
-7. API key now has USD credits
-
-No Frontend Alternative Exists:
-❌ SDK function? No
-❌ Smart contract call? No (impossible for fiat)
-❌ CLI command? No
-❌ Wallet integration? No
-```
-
-#### Why This Creates Confusion
-
-Most crypto protocols work like this:
-```
-Need tokens? → Buy on DEX → Done (all on-chain)
-```
-
-Nosana credit system works like this:
-```
-Need credits? → Visit deploy.nosana.com → Complete KYC → Pay with card → Done (off-chain)
-```
-
-This hybrid model (crypto gas + fiat compute) is unusual and causes confusion. Most users expect everything to be on-chain.
-
-#### The API Key vs Wallet Architecture
-
-This is the root of the "wired differently" problem:
+Fiat purchases (USD) **cannot** be handled by smart contracts:
+- Requires identity verification (KYC)
+- Requires payment processor integration
+- Requires backend database updates
+- Cannot be done via wallet/DEX alone
 
 ```
 NOS Token Path:
-Wallet (holds SOL + NOS) 
-  → Signs transactions
-  → Smart contract validates token balance
-  → Job runs
+Frontend → Wallet signs → DEX swap → Token balance updates → Done
 
 USD Credit Path:
-API Key (holds credit balance)
-  + Wallet (holds SOL for gas)
-  → Wallet signs (pays gas)
-  → API key authenticates (pays compute)
-  → Job runs
+deploy.nosana.com → Email login → Payment form → Backend processes → Done
 ```
 
-Two different authentication systems:
-1. **Cryptographic**: Wallet signature proves ownership
-2. **API Key**: Secret token proves account access
+#### The Only Way To Add Credits
 
-They serve different purposes and cannot be unified into a single frontend flow.
+1. Visit https://deploy.nosana.com
+2. Log in with email/password (not wallet)
+3. Complete identity verification
+4. Pay with credit card or crypto
+5. Credits appear on your API key
+
+**No alternative exists:**
+- ❌ SDK function? No
+- ❌ Smart contract call? No (fiat can't be on-chain)
+- ❌ CLI command? No
+- ❌ Wallet integration? No
 
 ## The Solution
 
@@ -325,6 +151,7 @@ Before running:
 - `credit-submit.ts` - TypeScript wrapper around CLI
 - `job-definition.json` - Sample video generation job
 - `monitor.ts` - Poll job status until completion
+- `api-examples.ts` - Production API implementations
 
 ## Usage
 
@@ -339,9 +166,9 @@ const job = await submitWithCredits({
 console.log('Job submitted:', job.address);
 ```
 
-## Debugging Gas Issues
+## Debugging
 
-If your job fails immediately with "insufficient funds":
+If your job fails immediately:
 
 ```bash
 # Check your SOL balance
@@ -369,27 +196,7 @@ Production API endpoints using the credit bypass pattern:
 - `GET https://ynvmaker.zo.space/api/credit-status` - Check credit balance + gas requirements  
 - `POST https://ynvmaker.zo.space/api/credit-mana` - Credit "mana" (budget) operations
 
-See `api-examples.ts` for the actual implementation code.
-
-### Key Implementation Details
-
-**submit-with-credits:**
-- Creates temp job JSON file
-- Calls `nosana job post --api` (not SDK)
-- Returns job address + warnings about SOL requirement
-- Handles "insufficient funds" errors specifically
-
-**credit-status:**
-- Calls `nosana account info` for real data
-- Returns credit balance + SOL gas requirements
-- Includes architecture explanation
-- Can check specific job status
-
-**credit-mana:**
-- Credit "mana" = your GPU compute budget
-- Actions: `check`, `estimate`, `reserve`
-- Returns estimated jobs affordable
-- Separate from NOS token or SOL
+See `api-examples.ts` for the implementation code.
 
 ---
 
